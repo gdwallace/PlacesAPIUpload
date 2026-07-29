@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Polygon Generator with Center Point</title>
+  <link rel="stylesheet" href="https://maps-sdk.trimblemaps.com/v4/trimblemaps-4.2.3.css" />
+  <style>
+    body { 
+      margin: 0; 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex;
+    }
+    #map {
+      flex-grow: 1;
+      height: 100vh;
+    }
+    #panel {
+      width: 380px;
+      height: 100vh;
+      background: #f8f9fa;
+      padding: 20px;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+      z-index: 1000;
+      overflow-y: auto;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    h3, h4 {
+      margin-top: 0;
+      border-bottom: 1px solid #dee2e6;
+      padding-bottom: 10px;
+    }
+    .form-section { margin-bottom: 20px; }
+    label, input {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    input, textarea {
+      margin-bottom: 10px;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    textarea {
+      font-family: monospace;
+      font-size: 0.9em;
+      resize: vertical;
+      min-height: 120px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      background-color: #e9ecef;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 1em;
+    }
+    button:hover { background-color: #d8dde1; }
+    button.primary {
+      background-color: #007bff;
+      color: white;
+      border-color: #007bff;
+    }
+    button.primary:hover { background-color: #0056b3; }
+    
+    #pointList {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      background: #fff;
+    }
+    #pointList li {
+      padding: 8px 12px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .action-buttons {
+      display: flex;
+      gap: 5px;
+    }
+    .list-btn {
+      width: auto;
+      padding: 2px 8px;
+      color: white;
+      border: none;
+      font-size: 0.8em;
+    }
+    .zoom-btn { background: #17a2b8; }
+    .zoom-btn:hover { background: #117a8b; }
+    .remove-btn { background: #dc3545; }
+    .remove-btn:hover { background: #c82333; }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .checkbox-row label {
+      display: inline;
+      width: auto;
+      margin: 0;
+      cursor: pointer;
+    }
+    .checkbox-row input[type="checkbox"] {
+      display: inline-block;
+      width: auto;
+      margin: 0;
+    }
+    .help-text {
+      font-size: 0.85em;
+      color: #666;
+      margin: 8px 0 0;
+      line-height: 1.4;
+    }
+    #placesApiStatus {
+      margin-top: 10px;
+      font-size: 0.9em;
+      color: #333;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="panel">
+    <h3>Polygon Generator</h3>
+
+    <div class="form-section">
+      <h4>API Settings</h4>
+      <label for="apiKeyInput">API Key</label>
+      <input type="password" id="apiKeyInput" placeholder="Enter API key">
+      <label for="placesApiUrlInput">Places API URL</label>
+      <input type="text" id="placesApiUrlInput" value="https://api.trimblemaps.com/places/v1/place">
+      <label for="bearerTokenOutput">Bearer Token</label>
+      <textarea id="bearerTokenOutput" readonly rows="3" placeholder="Bearer token will appear here"></textarea>
+      <p class="help-text">Each place is a center Point with its surrounding polygon as MultiPolygon site geometry. Places API does not support bulk inserts, so each place is submitted as its own JSON request. Imported address fields are included in the API payload but are not shown in the list.</p>
+      <button id="generateTokenBtn" style="margin-top: 10px;">Generate Bearer Token</button>
+      <button id="sendToPlacesApiBtn" class="primary" style="margin-top: 10px;">Send to Places API</button>
+      <div id="placesApiStatus" aria-live="polite"></div>
+    </div>
+
+    <div class="form-section">
+      <h4>1. Add Center Points</h4>
+      <label for="pointsText">Enter lat/long pairs (one per line, comma-separated):</label>
+      <textarea id="pointsText" placeholder="40.7128, -74.0060&#10;34.0522, -118.2437&#10;41.8781, -87.6298"></textarea>
+      <button id="parsePointsBtn" class="primary">Parse and Add Points</button>
+      <input type="file" id="importPlacesFile" accept=".csv,.txt" style="margin-top: 10px;">
+      <button id="importPlacesBtn" style="margin-top: 10px;">Import Places File</button>
+      <p class="help-text">Import headers: PlaceName, Lattitude/Latitude, Longitude, SetId. Optional address columns: StreetAddress/Address, City, State, PostalCode/Zip. The leading street number is split into streetNumber for the Places API.</p>
+      <ul id="pointList"><li>No center points added.</li></ul>
+    </div>
+
+    <div class="form-section">
+      <h4>2. Set Polygon Properties</h4>
+      <label for="numPoints">Number of Points for Border:</label>
+      <input type="number" id="numPoints" value="8" min="3">
+      <label for="radius">Radius (meters):</label>
+      <input type="number" id="radius" value="25">
+    </div>
+
+    <div class="form-section" style="margin-top: auto;">
+      <h4>3. Actions</h4>
+      <button id="drawBtn" class="primary">Draw All Polygons</button>
+      <button id="exportBtn" style="margin-top: 10px;">Export All to JSON</button>
+      <button id="exportPlacesBtn" style="margin-top: 10px;">Export Places Json</button>
+      <button id="exportCsvBtn" style="margin-top: 10px;">Export Coordinates to CSV</button>
+      <button id="clearBtn" style="margin-top: 10px;">Clear All</button>
+  </div>
+  </div>
+  
+  <div id="map"></div>
+
+  <script src="https://maps-sdk.trimblemaps.com/v4/trimblemaps-4.2.3.js"></script>
+  <script>
+    const API_KEY = "8EEB7E4406217949A0281D1BA6896392"; // Your key
+    TrimbleMaps.setAPIKey(API_KEY);
+
+    const US_STATE_NAMES = {
+      AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+      CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+      HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+      KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+      MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+      MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+      NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+      OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+      SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+      VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+      DC: "District of Columbia"
+    };
+
+    // --- APPLICATION STATE ---
+    let centerPoints = [];
+    let allPolygonsGeoJSON = {
+      type: "FeatureCollection",
+      features: []
+    };
+    let centerPointsGeoJSON = {
+      type: "FeatureCollection",
+      features: []
+    };
+    let polygonHandlesGeoJSON = {
+      type: "FeatureCollection",
+      features: []
+    };
+    let isDragging = false;
+    let currentHandleId = null;
+
+    // --- MAP INITIALIZATION ---
+    const map = new TrimbleMaps.Map({
+      container: 'map',
+      style: TrimbleMaps.Common.Style.Transportation,
+      center: [-98.5795, 39.8283], // Center of the US
+      zoom: 4
+    });
+
+    // --- DOM ELEMENTS ---
+    const pointList = document.getElementById('pointList');
+    const bearerTokenOutput = document.getElementById('bearerTokenOutput');
+    const generateTokenBtn = document.getElementById('generateTokenBtn');
+
+    // --- CORE LOGIC ---
+
+    /**
+     * Splits a full street line into streetNumber + streetAddress.
+     * Example: "1933 NEEDMORE ROAD" -> { streetNumber: "1933", streetAddress: "NEEDMORE ROAD" }
+     */
+    function splitStreetNumberFromAddress(fullAddress) {
+      const raw = String(fullAddress || "").trim();
+      if (!raw) {
+        return { streetNumber: "", streetAddress: "" };
+      }
+
+      const match = raw.match(/^(\d+[A-Za-z]?)\s+(.*)$/);
+      if (match) {
+        return {
+          streetNumber: match[1],
+          streetAddress: match[2].trim()
+        };
+      }
+
+      return { streetNumber: "", streetAddress: raw };
+    }
+
+    /**
+     * Builds a Places API address object from imported fields.
+     * Street number is parsed from the front of the street address when present.
+     */
+    function buildAddressFromImport({ streetAddress, city, state, postalCode } = {}) {
+      const split = splitStreetNumberFromAddress(streetAddress);
+      const stateRaw = String(state || "").trim();
+      const stateAbbrv = stateRaw.length === 2 ? stateRaw.toUpperCase() : "";
+      const stateName = stateAbbrv
+        ? (US_STATE_NAMES[stateAbbrv] || "")
+        : stateRaw;
+
+      return {
+        streetNumber: split.streetNumber,
+        streetAddress: split.streetAddress,
+        extendedAddress: "",
+        city: String(city || "").trim(),
+        state: {
+          name: stateName,
+          abbrv: stateAbbrv || ""
+        },
+        country: {
+          name: "United States",
+          abbrv: "US"
+        },
+        postalCode: String(postalCode || "").trim()
+      };
+    }
+
+    function emptyAddress() {
+      return {
+        streetNumber: "",
+        streetAddress: "",
+        extendedAddress: "",
+        city: "",
+        state: { name: "", abbrv: "" },
+        country: { name: "", abbrv: "" },
+        postalCode: ""
+      };
+    }
+
+    /**
+     * Calculates the coordinates of a regular polygon around a center point.
+     */
+    function polygonCoordinates(lat, lon, radius_m, numPoints, rotation_deg) {
+      const coords = [];
+      const earthRadius = 6378137.0;
+      const rot = rotation_deg * Math.PI / 180;
+      
+      // Generate points in a circle
+      for (let i = 0; i < numPoints; i++) {
+        // Calculate angle for this point (distributed evenly around the circle)
+        const angle = (2 * Math.PI * i / numPoints) + rot;
+        
+        // Calculate x and y offsets in meters
+        const dx = radius_m * Math.cos(angle);
+        const dy = radius_m * Math.sin(angle);
+        
+        // Convert meters to lat/lon
+        const newLat = lat + (dy / earthRadius) * (180 / Math.PI);
+        const newLon = lon + (dx / (earthRadius * Math.cos(Math.PI * lat / 180))) * (180 / Math.PI);
+        
+        coords.push([newLon, newLat]);
+      }
+      
+      // Close the polygon by adding the first point at the end
+      if (coords.length > 0) {
+        coords.push(coords[0]);
+      }
+      
+      return coords;
+    }
+
+    /**
+     * Updates the markers on the map for all center points.
+     */
+    function updateCenterPointMarkers() {
+      const features = centerPoints.map((point, index) => ({
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [point.lon, point.lat]
+        },
+        properties: {
+          id: index,
+          lat: point.lat,
+          lon: point.lon
+        }
+      }));
+
+      centerPointsGeoJSON = {
+        type: "FeatureCollection",
+        features: features
+      };
+
+      // Update the source if it exists, otherwise it will be created on map load
+      if (map.getSource('center-points-source')) {
+        map.getSource('center-points-source').setData(centerPointsGeoJSON);
+      }
+    }
+
+    /**
+     * Updates the UI list of center points.
+     * Address fields are kept in memory for API upload but are not rendered here.
+     */
+    function updatePointListUI() {
+      pointList.innerHTML = '';
+      if (centerPoints.length === 0) {
+        pointList.innerHTML = '<li>No center points added.</li>';
+        updateCenterPointMarkers();
+        return;
+      }
+      centerPoints.forEach((point, index) => {
+        const li = document.createElement('li');
+        const label = point.placeName ? `${point.placeName} — ${point.lat.toFixed(4)}, ${point.lon.toFixed(4)}` : `${point.lat.toFixed(4)}, ${point.lon.toFixed(4)}`;
+        li.innerHTML = `
+          <span>${label}</span>
+          <div class="action-buttons">
+            <button class="list-btn zoom-btn" data-index="${index}">Zoom</button>
+            <button class="list-btn remove-btn" data-index="${index}">Remove</button>
+          </div>
+        `;
+        pointList.appendChild(li);
+      });
+      updateCenterPointMarkers();
+    }
+    
+    /**
+     * Updates the polygon handles (vertex points) on the map.
+     */
+    function updatePolygonHandles() {
+      const handleFeatures = [];
+      
+      allPolygonsGeoJSON.features.forEach((polygonFeature, polyIndex) => {
+        const coords = polygonFeature.geometry.coordinates[0];
+        // Don't include the last coordinate if it's a duplicate of the first (closed polygon)
+        const vertexCount = coords.length > 0 && 
+          coords[0][0] === coords[coords.length - 1][0] && 
+          coords[0][1] === coords[coords.length - 1][1] 
+          ? coords.length - 1 
+          : coords.length;
+        
+        for (let i = 0; i < vertexCount; i++) {
+          handleFeatures.push({
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: coords[i]
+            },
+            properties: {
+              polygonId: polyIndex,
+              vertexIndex: i,
+              handleId: `poly-${polyIndex}-vertex-${i}`
+            }
+          });
+        }
+      });
+
+      polygonHandlesGeoJSON = {
+        type: "FeatureCollection",
+        features: handleFeatures
+      };
+
+      if (map.getSource('polygon-handles-source')) {
+        map.getSource('polygon-handles-source').setData(polygonHandlesGeoJSON);
+      }
+    }
+
+    /**
+     * Updates a polygon's coordinates when a handle is moved.
+     */
+    function updatePolygonFromHandle(polygonId, vertexIndex, newLon, newLat) {
+      const polygon = allPolygonsGeoJSON.features[polygonId];
+      if (!polygon) return;
+
+      const coords = polygon.geometry.coordinates[0];
+      const lastIndex = coords.length - 1;
+      
+      // Update the vertex coordinate
+      coords[vertexIndex] = [newLon, newLat];
+      
+      // For closed polygons, the last coordinate is a duplicate of the first
+      // If we're moving the first vertex (index 0), also update the closing vertex
+      if (vertexIndex === 0 && lastIndex > 0) {
+        coords[lastIndex] = [newLon, newLat];
+      }
+
+      // Update the polygon on the map
+      map.getSource('polygons-source').setData(allPolygonsGeoJSON);
+      
+      // Update handles to reflect new positions
+      updatePolygonHandles();
+    }
+
+    /**
+     * Draws all polygons on the map based on the centerPoints list.
+     */
+    function drawAllPolygons() {
+      if (centerPoints.length === 0) {
+        alert("Please add at least one center point.");
+        return;
+      }
+
+      const numPoints = parseInt(document.getElementById("numPoints").value, 10);
+      const radius = parseFloat(document.getElementById("radius").value);
+      const rotation = 0;
+      
+      if (numPoints < 3) {
+        alert("Number of points must be at least 3.");
+        return;
+      }
+      
+      const features = centerPoints.map((point, index) => {
+        const coords = polygonCoordinates(point.lat, point.lon, radius, numPoints, rotation);
+        return {
+          type: "Feature",
+          geometry: { type: "Polygon", coordinates: [coords] },
+          properties: {
+            id: index,
+            center: point,
+            numPoints: numPoints,
+            radius: radius,
+            placeName: point.placeName || '',
+            setId: Number.isFinite(point.setId) ? point.setId : 0,
+            address: point.address || emptyAddress()
+          }
+        };
+      });
+
+      allPolygonsGeoJSON = { type: "FeatureCollection", features: features };
+      map.getSource('polygons-source').setData(allPolygonsGeoJSON);
+      
+      // Update handles after drawing polygons
+      updatePolygonHandles();
+
+      const bounds = new TrimbleMaps.LngLatBounds();
+      features.forEach(feature => {
+        feature.geometry.coordinates[0].forEach(coord => {
+          bounds.extend(coord);
+        });
+      });
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, { padding: 50 });
+      }
+    }
+
+    /**
+     * Exports the GeoJSON of all drawn polygons.
+     */
+    function exportAllToJSON() {
+      if (allPolygonsGeoJSON.features.length === 0) {
+        alert("No polygons have been drawn yet. Click 'Draw All Polygons' first.");
+        return;
+      }
+      const jsonData = JSON.stringify(allPolygonsGeoJSON, null, 2);
+      const blob = new Blob([jsonData], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "polygons.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Builds a unique open polygon ring (no closing duplicate) from coordinates.
+     */
+    function buildOpenPolygonRing(rawCoords) {
+      let polygonRing = rawCoords.filter((coord, coordIndex, arr) => {
+        const isDuplicateClosingPoint = coordIndex > 0 && coordIndex === arr.length - 1;
+        if (!isDuplicateClosingPoint) {
+          return true;
+        }
+        return !(coord[0] === arr[0][0] && coord[1] === arr[0][1]);
+      });
+
+      const dedupedPolygonRing = [];
+      const seenCoords = new Set();
+      polygonRing.forEach(coord => {
+        const key = `${Number(coord[0]).toFixed(12)}|${Number(coord[1]).toFixed(12)}`;
+        if (!seenCoords.has(key)) {
+          seenCoords.add(key);
+          dedupedPolygonRing.push(coord);
+        }
+      });
+
+      return dedupedPolygonRing;
+    }
+
+    /**
+     * Builds a closed MultiPolygon ring from polygon coordinates.
+     */
+    function buildClosedPolygonRing(rawCoords) {
+      let polygonRing = buildOpenPolygonRing(rawCoords);
+
+      // GeoJSON polygon rings must be closed (first point repeated at the end).
+      if (polygonRing.length >= 2) {
+        const first = polygonRing[0];
+        const last = polygonRing[polygonRing.length - 1];
+        if (!(first[0] === last[0] && first[1] === last[1])) {
+          polygonRing = [...polygonRing, first];
+        }
+      } else if (polygonRing.length === 1) {
+        polygonRing = [polygonRing[0], polygonRing[0]];
+      }
+
+      return polygonRing;
+    }
+
+    /**
+     * Builds one Places API place object.
+     */
+    function buildPlacePayload(placeName, customPlaceId, pointLon, pointLat, notes, siteGeometry, setId = 0, address = null) {
+      const resolvedSetId = Number.isFinite(Number(setId)) ? Number(setId) : 0;
+      const resolvedAddress = address && typeof address === "object"
+        ? {
+            streetNumber: String(address.streetNumber || ""),
+            streetAddress: String(address.streetAddress || ""),
+            extendedAddress: String(address.extendedAddress || ""),
+            city: String(address.city || ""),
+            state: {
+              name: String((address.state && address.state.name) || ""),
+              abbrv: String((address.state && address.state.abbrv) || "")
+            },
+            country: {
+              name: String((address.country && address.country.name) || ""),
+              abbrv: String((address.country && address.country.abbrv) || "")
+            },
+            postalCode: String(address.postalCode || "")
+          }
+        : emptyAddress();
+
+      return {
+        customPlaceId: String(customPlaceId || ""),
+        name: String(placeName || ""),
+        setId: resolvedSetId,
+        categoryName: "Generated Place",
+        address: resolvedAddress,
+        geometry: {
+          type: "Point",
+          coordinates: [Number.isFinite(pointLon) ? pointLon : 0, Number.isFinite(pointLat) ? pointLat : 0]
+        },
+        site: {
+          name: String(placeName || ""),
+          geometry: siteGeometry
+        },
+        notes: String(notes || "")
+      };
+    }
+
+    /**
+     * Builds place payload objects from the current polygons.
+     * Each polygon produces exactly one place:
+     * - geometry: center Point
+     * - site.geometry: closed MultiPolygon ring around that center
+     * - address: imported address with streetNumber split from streetAddress
+     */
+    function buildPlacesJsonPayload() {
+      if (allPolygonsGeoJSON.features.length === 0) {
+        throw new Error("No polygons have been drawn yet. Click 'Draw All Polygons' first.");
+      }
+
+      const payloads = [];
+
+      allPolygonsGeoJSON.features.forEach((feature, index) => {
+        const center = feature.properties && feature.properties.center ? feature.properties.center : null;
+        const rawCoords = feature.geometry && feature.geometry.coordinates && feature.geometry.coordinates[0]
+          ? feature.geometry.coordinates[0]
+          : [];
+
+        const openRing = buildOpenPolygonRing(rawCoords);
+        const closedRing = buildClosedPolygonRing(rawCoords);
+        const centerLon = center ? center.lon : (openRing[0] ? openRing[0][0] : 0);
+        const centerLat = center ? center.lat : (openRing[0] ? openRing[0][1] : 0);
+        const placeName = (feature.properties && feature.properties.placeName)
+          ? feature.properties.placeName
+          : `P${String(index + 1).padStart(3, '0')}`;
+        const setIdFromProps = feature.properties && feature.properties.setId;
+        const setIdFromCenter = center && center.setId;
+        const setId = Number.isFinite(Number(setIdFromProps))
+          ? Number(setIdFromProps)
+          : (Number.isFinite(Number(setIdFromCenter)) ? Number(setIdFromCenter) : 0);
+        const address = (feature.properties && feature.properties.address)
+          || (center && center.address)
+          || emptyAddress();
+
+        const multiPolygonCoordinates = [
+          [
+            closedRing.map(([lonValue, latValue]) => [
+              Number.isFinite(lonValue) ? lonValue : 0,
+              Number.isFinite(latValue) ? latValue : 0
+            ])
+          ]
+        ];
+
+        payloads.push(buildPlacePayload(
+          placeName,
+          placeName,
+          centerLon,
+          centerLat,
+          `Generated center point for ${placeName}`,
+          {
+            type: "MultiPolygon",
+            coordinates: multiPolygonCoordinates
+          },
+          setId,
+          address
+        ));
+      });
+
+      return payloads;
+    }
+
+    /**
+     * Exports the drawn polygons as place-style JSON objects.
+     * The downloaded file is an array for review; Places API inserts must
+     * still be posted one place object per request via Send to Places API.
+     */
+    function exportPlacesJson() {
+      try {
+        const placeData = buildPlacesJsonPayload();
+        const jsonData = JSON.stringify(placeData, null, 2);
+        const blob = new Blob([jsonData], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "places.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        alert(error.message || "Unable to export the place JSON.");
+      }
+    }
+
+    /**
+     * Authenticates the provided API key and returns a bearer token.
+     */
+    async function authenticateTrimbleApiKey(apiKey) {
+      const authUrl = 'https://api.trimblemaps.com/places/v1/authenticate';
+      const response = await fetch(authUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ apiKey })
+      });
+
+      const responseText = await response.text();
+      let parsedResponse = responseText;
+      try {
+        parsedResponse = JSON.parse(responseText);
+      } catch (error) {
+        // Keep the plain text response if it is not JSON.
+      }
+
+      if (!response.ok) {
+        throw new Error(`Authentication failed (${response.status})${responseText ? `: ${responseText}` : ''}`);
+      }
+
+      if (parsedResponse && parsedResponse.token) {
+        return parsedResponse.token;
+      }
+
+      if (typeof parsedResponse === 'string' && parsedResponse) {
+        return parsedResponse;
+      }
+
+      throw new Error('Authentication response did not contain a token.');
+    }
+
+    function updateBearerTokenDisplay(token) {
+      if (bearerTokenOutput) {
+        bearerTokenOutput.value = token ? token : '';
+      }
+    }
+
+    async function generateBearerToken() {
+      const apiKey = document.getElementById('apiKeyInput').value.trim();
+      const statusEl = document.getElementById('placesApiStatus');
+
+      if (!apiKey) {
+        alert('Please enter an API key first.');
+        return null;
+      }
+
+      try {
+        statusEl.textContent = 'Generating bearer token...';
+        const bearerToken = await authenticateTrimbleApiKey(apiKey);
+        updateBearerTokenDisplay(bearerToken);
+        statusEl.textContent = 'Bearer token generated successfully.';
+        return bearerToken;
+      } catch (error) {
+        updateBearerTokenDisplay('');
+        statusEl.textContent = error.message || 'Failed to generate bearer token.';
+        alert(error.message || 'Failed to generate bearer token.');
+        return null;
+      }
+    }
+
+    /**
+     * Sends each built place as its own POST body to the Places API.
+     * Never posts an array/bulk payload — one place object per request.
+     */
+    async function sendToPlacesApi() {
+      const apiKey = document.getElementById('apiKeyInput').value.trim();
+      const apiUrl = document.getElementById('placesApiUrlInput').value.trim() || 'https://api.trimblemaps.com/places/v1/place';
+      const statusEl = document.getElementById('placesApiStatus');
+      const sendBtn = document.getElementById('sendToPlacesApiBtn');
+
+      if (!apiKey) {
+        alert("Please enter an API key first.");
+        return;
+      }
+
+      sendBtn.disabled = true;
+      statusEl.textContent = 'Authenticating...';
+
+      try {
+        const bearerToken = await authenticateTrimbleApiKey(apiKey);
+        const placesToSend = buildPlacesJsonPayload();
+
+        if (!Array.isArray(placesToSend) || placesToSend.length === 0) {
+          throw new Error("No places were found to send.");
+        }
+
+        const responses = [];
+        for (let index = 0; index < placesToSend.length; index++) {
+          const requestPayload = placesToSend[index];
+
+          if (!requestPayload || typeof requestPayload !== 'object' || Array.isArray(requestPayload)) {
+            throw new Error(`Place ${index + 1} is not a single JSON object and cannot be submitted.`);
+          }
+
+          statusEl.textContent = `Sending place ${index + 1} of ${placesToSend.length}: ${requestPayload.customPlaceId || requestPayload.name || 'unnamed'}`;
+
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${bearerToken}`
+            },
+            // One place object per request — never stringify the full array.
+            body: JSON.stringify(requestPayload)
+          });
+
+          const responseText = await response.text();
+          let parsedResponse = responseText;
+          try {
+            parsedResponse = JSON.parse(responseText);
+          } catch (error) {
+            // Keep the plain text response if it is not JSON.
+          }
+
+          if (!response.ok) {
+            throw new Error(`Place ${index + 1} (${requestPayload.customPlaceId || 'unnamed'}) failed (${response.status})${responseText ? `: ${responseText}` : ''}`);
+          }
+
+          responses.push({ index: index + 1, customPlaceId: requestPayload.customPlaceId, response: parsedResponse });
+        }
+
+        console.log('Places API responses:', responses);
+        statusEl.textContent = `Succeeded: ${responses.length} place(s) submitted as individual requests.`;
+        alert(`Places API request succeeded for ${responses.length} place(s).\nEach place was submitted as a separate JSON request.`);
+      } catch (error) {
+        statusEl.textContent = error.message || "Unable to send the request to the Places API.";
+        alert(error.message || "Unable to send the request to the Places API.");
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    /**
+     * Exports all polygon coordinates as a CSV file.
+     */
+    function exportToCSV() {
+      if (allPolygonsGeoJSON.features.length === 0) {
+        alert("No polygons have been drawn yet. Click 'Draw All Polygons' first.");
+        return;
+      }
+
+      // Build CSV content
+      let csvContent = "Latitude,Longitude\n";
+      
+      allPolygonsGeoJSON.features.forEach((feature, polyIndex) => {
+        const coords = feature.geometry.coordinates[0];
+        const lastIndex = coords.length - 1;
+        
+        // Determine how many vertices to include (exclude duplicate closing point)
+        const vertexCount = lastIndex > 0 && 
+          coords[0][0] === coords[lastIndex][0] && 
+          coords[0][1] === coords[lastIndex][1] 
+          ? lastIndex 
+          : coords.length;
+        
+        // Add each coordinate as a row (lon, lat format in GeoJSON, but CSV will be lat, lon)
+        for (let i = 0; i < vertexCount; i++) {
+          const [lon, lat] = coords[i];
+          csvContent += `${lat},${lon}\n`;
+        }
+      });
+
+      // Create and download the CSV file
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "polygon_coordinates.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    
+    /**
+     * Clears all points and polygons.
+     */
+    function clearAll() {
+      centerPoints = [];
+      allPolygonsGeoJSON = { type: "FeatureCollection", features: [] };
+      centerPointsGeoJSON = { type: "FeatureCollection", features: [] };
+      polygonHandlesGeoJSON = { type: "FeatureCollection", features: [] };
+      map.getSource('polygons-source').setData(allPolygonsGeoJSON);
+      if (map.getSource('center-points-source')) {
+        map.getSource('center-points-source').setData(centerPointsGeoJSON);
+      }
+      if (map.getSource('polygon-handles-source')) {
+        map.getSource('polygon-handles-source').setData(polygonHandlesGeoJSON);
+      }
+      updatePointListUI();
+    }
+
+    /**
+     * Parses a delimited text line that may contain quotes.
+     */
+    function parseDelimitedLine(line, delimiter) {
+      const values = [];
+      let currentValue = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            currentValue += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === delimiter && !inQuotes) {
+          values.push(currentValue.trim());
+          currentValue = '';
+        } else {
+          currentValue += char;
+        }
+      }
+
+      values.push(currentValue.trim());
+      return values;
+    }
+
+    function findHeaderIndex(headers, candidates) {
+      return headers.findIndex(header => candidates.includes(header));
+    }
+
+    /**
+     * Parses a place list file with headers PlaceName, Lattitude, Longitude, SetId.
+     * Optional address columns: StreetAddress/Address, City, State, PostalCode/Zip.
+     * Address values are stored for Places API upload but are not shown in the UI.
+     */
+    function parsePlacesFileContent(text) {
+      const rows = text.split(/\r?\n/).map(row => row.trim()).filter(Boolean);
+      if (rows.length < 2) {
+        throw new Error("The file must contain a header row and at least one data row.");
+      }
+
+      const delimiter = rows[0].includes('\t') ? '\t' : ',';
+      const headers = parseDelimitedLine(rows[0], delimiter).map(header => header.trim().toLowerCase());
+      const placeIndex = findHeaderIndex(headers, ['placename', 'place_name', 'name', 'customplaceid']);
+      const latIndex = findHeaderIndex(headers, ['lattitude', 'latitude', 'lat']);
+      const lonIndex = findHeaderIndex(headers, ['longitude', 'long', 'lon', 'lng']);
+      const setIdIndex = findHeaderIndex(headers, ['setid', 'set_id']);
+      const streetIndex = findHeaderIndex(headers, ['streetaddress', 'street_address', 'address', 'street', 'fulladdress']);
+      const cityIndex = findHeaderIndex(headers, ['city']);
+      const stateIndex = findHeaderIndex(headers, ['state', 'stateabbr', 'state_abbr', 'st']);
+      const postalIndex = findHeaderIndex(headers, ['postalcode', 'postal_code', 'zip', 'zipcode', 'zip_code']);
+
+      if (placeIndex < 0 || latIndex < 0 || lonIndex < 0 || setIdIndex < 0) {
+        throw new Error("Expected headers named PlaceName, Lattitude, Longitude, and SetId. Optional: StreetAddress/Address, City, State, PostalCode/Zip.");
+      }
+
+      const requiredIndexes = [placeIndex, latIndex, lonIndex, setIdIndex];
+      const optionalIndexes = [streetIndex, cityIndex, stateIndex, postalIndex].filter(index => index >= 0);
+      const maxRequiredIndex = Math.max(...requiredIndexes);
+
+      const parsedPlaces = [];
+      rows.slice(1).forEach((row, rowIndex) => {
+        const values = parseDelimitedLine(row, delimiter);
+        if (values.length <= maxRequiredIndex) {
+          return;
+        }
+
+        const placeName = values[placeIndex] || `Place ${rowIndex + 2}`;
+        const lat = parseFloat(values[latIndex]);
+        const lon = parseFloat(values[lonIndex]);
+        const setId = parseInt(values[setIdIndex], 10);
+        const streetAddress = streetIndex >= 0 ? (values[streetIndex] || "") : "";
+        const city = cityIndex >= 0 ? (values[cityIndex] || "") : "";
+        const state = stateIndex >= 0 ? (values[stateIndex] || "") : "";
+        const postalCode = postalIndex >= 0 ? (values[postalIndex] || "") : "";
+
+        if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 && !isNaN(setId)) {
+          parsedPlaces.push({
+            placeName,
+            lat,
+            lon,
+            setId,
+            address: buildAddressFromImport({ streetAddress, city, state, postalCode })
+          });
+        }
+      });
+
+      if (parsedPlaces.length === 0) {
+        throw new Error("No valid place records were found in the selected file.");
+      }
+
+      // optionalIndexes kept for clarity / future validation of address-only rows
+      void optionalIndexes;
+
+      return parsedPlaces;
+    }
+
+    /**
+     * Imports a place list file, converts each row to a center point, and draws polygons.
+     */
+    async function importPlacesFile() {
+      const input = document.getElementById('importPlacesFile');
+      const file = input.files && input.files[0];
+      if (!file) {
+        alert("Please choose a file to import.");
+        return;
+      }
+
+      try {
+        const text = await file.text();
+        const parsedPlaces = parsePlacesFileContent(text);
+        centerPoints = parsedPlaces.map(place => ({
+          placeName: place.placeName,
+          lat: place.lat,
+          lon: place.lon,
+          setId: place.setId,
+          address: place.address || emptyAddress()
+        }));
+        updatePointListUI();
+        drawAllPolygons();
+        alert(`Imported ${centerPoints.length} place(s) and drew their polygons.`);
+      } catch (error) {
+        alert(error.message || "Unable to import the selected file.");
+      }
+    }
+
+    /**
+     * Parses text input for lat/long coordinates and adds them to centerPoints.
+     * Supports formats like:
+     * - "40.7128, -74.0060"
+     * - "40.7128,-74.0060"
+     * - "lat: 40.7128, lon: -74.0060"
+     */
+    function parseAndAddPoints() {
+      const text = document.getElementById("pointsText").value.trim();
+      if (!text) {
+        alert("Please enter at least one coordinate pair.");
+        return;
+      }
+
+      const lines = text.split('\n');
+      const newPoints = [];
+      let errorCount = 0;
+
+      lines.forEach((line, lineIndex) => {
+        line = line.trim();
+        if (!line) return; // Skip empty lines
+
+        // Try to extract lat and lon from various formats
+        let lat, lon;
+        
+        // Format: "lat, lon" or "lat,lon"
+        const commaMatch = line.match(/^([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)$/);
+        if (commaMatch) {
+          lat = parseFloat(commaMatch[1]);
+          lon = parseFloat(commaMatch[2]);
+        } else {
+          // Format: "lat: X, lon: Y" or similar
+          const latMatch = line.match(/lat[itude]*\s*[:=]\s*([+-]?\d+\.?\d*)/i);
+          const lonMatch = line.match(/lon[gitude]*\s*[:=]\s*([+-]?\d+\.?\d*)/i);
+          if (latMatch && lonMatch) {
+            lat = parseFloat(latMatch[1]);
+            lon = parseFloat(lonMatch[1]);
+          } else {
+            // Try space-separated
+            const parts = line.split(/\s+/);
+            if (parts.length >= 2) {
+              lat = parseFloat(parts[0]);
+              lon = parseFloat(parts[1]);
+            }
+          }
+        }
+
+        if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+          newPoints.push({ lat, lon, address: emptyAddress() });
+        } else {
+          errorCount++;
+          console.warn(`Invalid coordinate on line ${lineIndex + 1}: ${line}`);
+        }
+      });
+
+      if (newPoints.length === 0) {
+        alert("No valid coordinates found. Please check your format.\nExpected: lat, lon (one per line)");
+        return;
+      }
+
+      if (errorCount > 0) {
+        alert(`Added ${newPoints.length} point(s). ${errorCount} line(s) had invalid format.`);
+      }
+
+      centerPoints.push(...newPoints);
+      updatePointListUI();
+      
+      // Clear the textarea after successful parsing
+      document.getElementById("pointsText").value = '';
+    }
+
+    // --- EVENT LISTENERS ---
+
+    document.getElementById('parsePointsBtn').addEventListener('click', parseAndAddPoints);
+    
+    // Allow Ctrl+Enter to parse points
+    document.getElementById('pointsText').addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        parseAndAddPoints();
+      }
+    });
+    
+    // Use event delegation for buttons in the point list
+    pointList.addEventListener('click', (e) => {
+      const target = e.target;
+      if (target.classList.contains('remove-btn')) {
+        const index = parseInt(target.dataset.index, 10);
+        centerPoints.splice(index, 1);
+        updatePointListUI();
+      } else if (target.classList.contains('zoom-btn')) {
+        const index = parseInt(target.dataset.index, 10);
+        const point = centerPoints[index];
+        map.flyTo({
+          center: [point.lon, point.lat],
+          zoom: 18, // A good zoom level for viewing a single location
+          essential: true
+        });
+      }
+    });
+
+    document.getElementById('drawBtn').addEventListener('click', drawAllPolygons);
+    document.getElementById('exportBtn').addEventListener('click', exportAllToJSON);
+    document.getElementById('exportPlacesBtn').addEventListener('click', exportPlacesJson);
+    document.getElementById('exportCsvBtn').addEventListener('click', exportToCSV);
+    document.getElementById('clearBtn').addEventListener('click', clearAll);
+    document.getElementById('importPlacesBtn').addEventListener('click', importPlacesFile);
+    document.getElementById('sendToPlacesApiBtn').addEventListener('click', sendToPlacesApi);
+    if (generateTokenBtn) {
+      generateTokenBtn.addEventListener('click', generateBearerToken);
+    }
+
+    // --- MAP SETUP ON LOAD ---
+    map.on('load', () => {
+      // Add polygons source and layers
+      map.addSource('polygons-source', {
+        type: 'geojson',
+        data: allPolygonsGeoJSON
+      });
+      map.addLayer({
+        id: 'polygon-fill',
+        type: 'fill',
+        source: 'polygons-source',
+        paint: { 'fill-color': '#ff6600', 'fill-opacity': 0.3 }
+      });
+      map.addLayer({
+        id: 'polygon-outline',
+        type: 'line',
+        source: 'polygons-source',
+        paint: { 'line-color': '#cc3300', 'line-width': 2 }
+      });
+
+      // Add center points source and layers
+      map.addSource('center-points-source', {
+        type: 'geojson',
+        data: centerPointsGeoJSON
+      });
+      map.addLayer({
+        id: 'center-points-circle',
+        type: 'circle',
+        source: 'center-points-source',
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#007bff',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff'
+        }
+      });
+
+      // Add polygon handles source and layers
+      map.addSource('polygon-handles-source', {
+        type: 'geojson',
+        data: polygonHandlesGeoJSON
+      });
+      map.addLayer({
+        id: 'polygon-handles',
+        type: 'circle',
+        source: 'polygon-handles-source',
+        paint: {
+          'circle-radius': 6,
+          'circle-color': '#28a745',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff'
+        }
+      });
+
+      // Make handles draggable
+      map.on('mousedown', 'polygon-handles', (e) => {
+        if (e.features.length > 0) {
+          e.preventDefault();
+          isDragging = true;
+          currentHandleId = e.features[0].properties.handleId;
+          map.getCanvas().style.cursor = 'grabbing';
+          // Disable map panning while dragging handles
+          map.dragPan.disable();
+        }
+      });
+
+      map.on('mousemove', (e) => {
+        if (isDragging && currentHandleId) {
+          e.preventDefault();
+          const handle = polygonHandlesGeoJSON.features.find(
+            f => f.properties.handleId === currentHandleId
+          );
+          if (handle) {
+            const { polygonId, vertexIndex } = handle.properties;
+            updatePolygonFromHandle(polygonId, vertexIndex, e.lngLat.lng, e.lngLat.lat);
+          }
+        } else {
+          // Change cursor on hover
+          const features = map.queryRenderedFeatures(e.point, {
+            layers: ['polygon-handles']
+          });
+          map.getCanvas().style.cursor = features.length > 0 ? 'grab' : '';
+        }
+      });
+
+      map.on('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          currentHandleId = null;
+          map.getCanvas().style.cursor = '';
+          // Re-enable map panning
+          map.dragPan.enable();
+        }
+      });
+
+      map.on('mouseleave', 'polygon-handles', () => {
+        if (!isDragging) {
+          map.getCanvas().style.cursor = '';
+        }
+      });
+    });
+  </script>
+</body>
+</html>
