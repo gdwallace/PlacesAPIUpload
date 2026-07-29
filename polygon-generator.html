@@ -158,7 +158,7 @@
       <button id="parsePointsBtn" class="primary">Parse and Add Points</button>
       <input type="file" id="importPlacesFile" accept=".csv,.txt" style="margin-top: 10px;">
       <button id="importPlacesBtn" style="margin-top: 10px;">Import Places File</button>
-      <p class="help-text">Import headers: PlaceName, Lattitude/Latitude, Longitude, SetId. Optional address columns: StreetAddress/Address, City, State, PostalCode/Zip. The leading street number is split into streetNumber for the Places API.</p>
+      <p class="help-text">Import headers: PlaceName, Lattitude/Latitude, Longitude, SetId. Optional address columns: StreetAddress/Address, City, State, PostalCode/Zip. Address fields are sent to the Places API as imported (full street line in streetAddress).</p>
       <ul id="pointList"><li>No center points added.</li></ul>
     </div>
 
@@ -234,32 +234,10 @@
     // --- CORE LOGIC ---
 
     /**
-     * Splits a full street line into streetNumber + streetAddress.
-     * Example: "1933 NEEDMORE ROAD" -> { streetNumber: "1933", streetAddress: "NEEDMORE ROAD" }
-     */
-    function splitStreetNumberFromAddress(fullAddress) {
-      const raw = String(fullAddress || "").trim();
-      if (!raw) {
-        return { streetNumber: "", streetAddress: "" };
-      }
-
-      const match = raw.match(/^(\d+[A-Za-z]?)\s+(.*)$/);
-      if (match) {
-        return {
-          streetNumber: match[1],
-          streetAddress: match[2].trim()
-        };
-      }
-
-      return { streetNumber: "", streetAddress: raw };
-    }
-
-    /**
      * Builds a Places API address object from imported fields.
-     * Street number is parsed from the front of the street address when present.
+     * Keeps the full street line in streetAddress; does not split out a street number.
      */
     function buildAddressFromImport({ streetAddress, city, state, postalCode } = {}) {
-      const split = splitStreetNumberFromAddress(streetAddress);
       const stateRaw = String(state || "").trim();
       const stateAbbrv = stateRaw.length === 2 ? stateRaw.toUpperCase() : "";
       const stateName = stateAbbrv
@@ -267,8 +245,8 @@
         : stateRaw;
 
       return {
-        streetNumber: split.streetNumber,
-        streetAddress: split.streetAddress,
+        streetNumber: "",
+        streetAddress: String(streetAddress || "").trim(),
         extendedAddress: "",
         city: String(city || "").trim(),
         state: {
@@ -611,7 +589,7 @@
      * Each polygon produces exactly one place:
      * - geometry: center Point
      * - site.geometry: closed MultiPolygon ring around that center
-     * - address: imported address with streetNumber split from streetAddress
+     * - address: imported address fields (full street line in streetAddress)
      */
     function buildPlacesJsonPayload() {
       if (allPolygonsGeoJSON.features.length === 0) {
